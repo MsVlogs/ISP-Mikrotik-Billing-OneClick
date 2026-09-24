@@ -216,7 +216,7 @@ class NewCustomer extends Component
             'mobile' => ['nullable', 'string', new ValidPhoneDigits],
             'email' => 'nullable|email',
             'alternative_mobile' => ['nullable', 'string', new ValidPhoneDigits],
-            'identification_no' => 'nullable|string|max:255',
+            'identification_no' => 'nullable|string',
             'router_name' => 'nullable|required_with:service',
             'service' => 'nullable|required_with:router_name',
             'interface' => 'nullable|required_if:service,static',

@@ -110,7 +110,6 @@
                             label="{{ __('Mobile Number') }}"
                             type="mobile"
                             name="mobile"
-                            required="true"
                         />
                         <x-mikrotik.form-group
                             label="{{ __('Alternate Mobile Number') }}"

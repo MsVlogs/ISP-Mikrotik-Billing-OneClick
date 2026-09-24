@@ -18,10 +18,35 @@ class BroadbandController extends Controller
         return CustomersInfo::query()
             ->with(['billing', 'pppUser', 'customerAddress', 'package', 'reseller'])
             ->when($request->q, fn ($q, $v) => $q->where(function ($x) use ($v) {
-                $x->where('customer_name', 'like', "%{$v}%")
-                  ->orWhere('customer_unique_id', 'like', "%{$v}%")
-                  ->orWhere('mobile', 'like', "%{$v}%")
-                  ->orWhere('email', 'like', "%{$v}%");
+                $like = "%{$v}%";
+                $x->where('customer_name', 'like', $like)
+                  ->orWhere('customer_unique_id', 'like', $like)
+                  ->orWhere('mobile', 'like', $like)
+                  ->orWhere('alternative_mobile', 'like', $like)
+                  ->orWhere('email', 'like', $like)
+                  ->orWhere('contact_person', 'like', $like)
+                  ->orWhere('parents_name', 'like', $like)
+                  ->orWhere('spouse_name', 'like', $like)
+                  ->orWhere('address', 'like', $like)
+                  ->orWhere('identification_no', 'like', $like)
+                  ->orWhere('profession', 'like', $like)
+                  ->orWhereHas('customerAddress', function ($address) use ($like) {
+                      $address->where('label_name', 'like', $like)
+                          ->orWhere('input_type_text', 'like', $like)
+                          ->orWhere('input_type_dropdown', 'like', $like)
+                          ->orWhere('input_type_textarea', 'like', $like);
+                  })
+                  ->orWhereHas('pppUser', function ($ppp) use ($like) {
+                      $ppp->where('username', 'like', $like)
+                          ->orWhere('router_name', 'like', $like)
+                          ->orWhere('ppp_remote_ip', 'like', $like)
+                          ->orWhere('ip_address', 'like', $like)
+                          ->orWhere('caller_id', 'like', $like)
+                          ->orWhere('comment', 'like', $like);
+                  })
+                  ->orWhereHas('package', function ($package) use ($like) {
+                      $package->where('package', 'like', $like);
+                  });
             }))
             ->when($request->router_id, fn ($q, $v) => $q->whereHas('pppUser', fn ($x) => $x->where('router_name', $v)))
             ->when($request->reseller_id, fn ($q, $v) => $q->where('reseller_id', $v));
@@ -37,7 +62,8 @@ class BroadbandController extends Controller
         if ($status === 'due') $query->whereHas('billing', fn ($q) => $q->where('due_amount', '>', 0));
         if ($request->from) $query->whereDate('created_at', '>=', $request->from);
         if ($request->to) $query->whereDate('created_at', '<=', $request->to);
-        $customers = $query->latest('id')->paginate((int) ($request->rows ?: 50))->withQueryString();
+        $rows = min(max((int) $request->input('rows', 50), 10), 500);
+        $customers = $query->latest('id')->paginate($rows)->withQueryString();
         return view('xlink.broadband.customer-list', ['customers' => $customers, 'mode' => $status ?: 'all', 'routers' => RouterList::orderBy('router_name')->get(), 'resellers' => Reseller::with('user')->get(), 'packages' => PackageList::orderBy('package')->get()]);
     }
 
@@ -55,6 +81,73 @@ class BroadbandController extends Controller
     { $request->merge(['from' => Carbon::now()->toDateString()]); return $this->list($request); }
     public function unverified(Request $request)
     { $request->merge(['status' => 'unverified']); return $this->list($request); }
+
+    public function disableCustomer(string $id)
+    {
+        abort_unless(auth()->user()?->hasRole('Super Admin') || hasAccess(['Super Admin'], ['disable-customer']), 403);
+
+        try {
+            $uniqueId = decrypt($id);
+            $customer = CustomersInfo::where('customer_unique_id', $uniqueId)->with('pppUser')->firstOrFail();
+
+            if ($customer->pppUser && $customer->pppUser->router_name) {
+                app(MikrotikController::class)->disablePPPSecret(
+                    $uniqueId,
+                    $customer->pppUser->router_name,
+                    $customer->pppUser->username
+                );
+            }
+
+            \DB::transaction(function () use ($customer) {
+                $customer->status = 'disable';
+                $customer->save();
+
+                if ($customer->pppUser) {
+                    PPPSecrets::whereKey($customer->ppp_user_id)->update(['status' => 'disable']);
+                }
+            });
+
+            return back()->with('broadband_message', 'Customer disabled successfully.');
+        } catch (\Throwable $e) {
+            report($e);
+            return back()->withErrors(['customer' => 'Failed to disable customer. Please try again.']);
+        }
+    }
+
+    public function destroyCustomer(string $id)
+    {
+        abort_unless(auth()->user()?->hasRole('Super Admin') || hasAccess(['Super Admin'], ['delete-customer']), 403);
+
+        try {
+            $uniqueId = decrypt($id);
+            $customer = CustomersInfo::where('customer_unique_id', $uniqueId)->with('pppUser')->firstOrFail();
+
+            if ($customer->status === 'active') {
+                return back()->withErrors(['customer' => 'Disable the customer before deleting the customer record.']);
+            }
+
+            $pppUser = $customer->pppUser;
+            if ($pppUser && $pppUser->router_name) {
+                app(MikrotikController::class)->removePPPSecret(
+                    $uniqueId,
+                    $pppUser->router_name,
+                    $pppUser->username
+                );
+            }
+
+            \DB::transaction(function () use ($customer, $pppUser) {
+                if ($pppUser) {
+                    $pppUser->delete();
+                }
+                $customer->delete();
+            });
+
+            return redirect()->route('broadband-customers')->with('broadband_message', 'Customer deleted successfully.');
+        } catch (\Throwable $e) {
+            report($e);
+            return back()->withErrors(['customer' => 'Operation failed. Please try again.']);
+        }
+    }
 
     public function packages(Request $request)
     {

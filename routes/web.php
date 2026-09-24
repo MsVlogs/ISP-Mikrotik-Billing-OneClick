@@ -198,6 +198,8 @@ Route::middleware([
             Route::get('/unverified-customers', [\App\Http\Controllers\BroadbandController::class, 'unverified'])->name('broadband-unverified-customers');
             Route::get('/packages', [\App\Http\Controllers\BroadbandController::class, 'packages'])->name('broadband-packages');
             Route::get('/customer-package-import', [\App\Http\Controllers\BroadbandController::class, 'import'])->name('broadband-customer-package-import');
+            Route::post('/customers/{id}/disable', [\App\Http\Controllers\BroadbandController::class, 'disableCustomer'])->name('broadband-customer-disable');
+            Route::delete('/customers/{id}', [\App\Http\Controllers\BroadbandController::class, 'destroyCustomer'])->name('broadband-customer-destroy');
         });
         // Compatibility aliases matching the reference navigation
         Route::get('/customer-add', fn () => redirect()->route('customer-add'))->name('customer-add-alias');

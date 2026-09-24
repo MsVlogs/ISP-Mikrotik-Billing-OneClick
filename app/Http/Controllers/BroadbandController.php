@@ -40,7 +40,6 @@ class BroadbandController extends Controller
                       $ppp->where('username', 'like', $like)
                           ->orWhere('router_name', 'like', $like)
                           ->orWhere('ppp_remote_ip', 'like', $like)
-                          ->orWhere('ip_address', 'like', $like)
                           ->orWhere('caller_id', 'like', $like)
                           ->orWhere('comment', 'like', $like);
                   })

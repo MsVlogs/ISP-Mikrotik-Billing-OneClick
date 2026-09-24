@@ -152,6 +152,9 @@ php artisan config:cache
 php artisan route:cache
 php artisan view:cache
 
+# Laravel 12 exposes /up only when health routing is registered. Fail closed if the app cannot boot.
+php artisan about >/dev/null
+
 log "Setting runtime permissions"
 chown -R "$APP_USER":"$APP_USER" storage bootstrap/cache
 chmod -R ug+rwX storage bootstrap/cache

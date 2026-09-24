@@ -38,10 +38,7 @@ log "Installing OS packages"
 export DEBIAN_FRONTEND=noninteractive
 apt-get update
 apt-get install -y software-properties-common ca-certificates curl git unzip nginx mariadb-server mariadb-client supervisor \
-  build-essential pkg-config libzip-dev libpng-dev libjpeg-dev libfreetype6-dev libonig-dev libxml2-dev libcurl4-openssl-dev \
-  php${PHP_VERSION} php${PHP_VERSION}-cli php${PHP_VERSION}-fpm php${PHP_VERSION}-common php${PHP_VERSION}-mysql \
-  php${PHP_VERSION}-mbstring php${PHP_VERSION}-xml php${PHP_VERSION}-curl php${PHP_VERSION}-zip php${PHP_VERSION}-gd \
-  php${PHP_VERSION}-bcmath php${PHP_VERSION}-intl php${PHP_VERSION}-opcache
+  build-essential pkg-config libzip-dev libpng-dev libjpeg-dev libfreetype6-dev libonig-dev libxml2-dev libcurl4-openssl-dev
 
 PHP_BIN="$(command -v php${PHP_VERSION} || true)"
 if [[ -z "$PHP_BIN" ]]; then

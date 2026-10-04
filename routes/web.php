@@ -199,6 +199,8 @@ Route::middleware([
             Route::get('/packages', [\App\Http\Controllers\BroadbandController::class, 'packages'])->name('broadband-packages');
             Route::get('/customer-package-import', [\App\Http\Controllers\BroadbandController::class, 'import'])->name('broadband-customer-package-import');
             Route::post('/customers/{id}/disable', [\App\Http\Controllers\BroadbandController::class, 'disableCustomer'])->name('broadband-customer-disable');
+            Route::get('/customers/{id}/ping', [\App\Http\Controllers\BroadbandController::class, 'customerPing'])->name('broadband-customer-ping');
+            Route::get('/customers/{id}/traffic', [\App\Http\Controllers\BroadbandController::class, 'customerTraffic'])->name('broadband-customer-traffic');
             Route::delete('/customers/{id}', [\App\Http\Controllers\BroadbandController::class, 'destroyCustomer'])->name('broadband-customer-destroy');
         });
         // Compatibility aliases matching the reference navigation

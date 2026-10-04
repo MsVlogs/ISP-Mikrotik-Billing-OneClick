@@ -12,6 +12,7 @@ use App\Livewire\Admin\AdminVoucherList;
 use App\Livewire\Admin\SystemLogViewer;
 use App\Http\Controllers\CollectionReportController;
 use App\Http\Controllers\DashboardController;
+use App\Http\Controllers\CustomerDetailsController;
 use App\Http\Controllers\ImportController;
 use App\Http\Controllers\MainSiteController;
 use App\Http\Controllers\Payment\BkashPaymentController;
@@ -135,7 +136,8 @@ Route::middleware([
         ]);
         Route::get('customers/data', [CustomerList::class, 'getData'])->name('customers.data');
         Route::get('customers/{id}/edit', [CustomerList::class, 'edit'])->name('customers.edit');
-        Route::get('customers/{id}', [CustomerList::class, 'show'])->name('customers.show');
+        Route::get('customers/{id}', [CustomerDetailsController::class, 'show'])->name('customers.show');
+        Route::get('/customer-details/{id}', [CustomerDetailsController::class, 'show'])->name('customer.details');
         Route::get('customers', CustomerList::class)->name('customers.index');
 
         Route::get('/new/customers', CustomerList::class)->name('customers-new');

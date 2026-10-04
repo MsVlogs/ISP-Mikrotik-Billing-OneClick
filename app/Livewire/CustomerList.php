@@ -197,7 +197,12 @@ class CustomerList extends Component
                         <span class="badge bg-secondary bg-opacity-10 text-secondary pe-2">'.$row->customer_unique_id.'</span> '.
 
                         (! empty($row->mobile)
-                            ? '<span class="text-muted"><i class="bi bi-telephone text-success"></i> '.$row->mobile.'</span> '
+                            ? (function () use ($row) {
+                                $mobile = preg_replace('/\\D+/', '', (string) $row->mobile);
+                                if (str_starts_with($mobile, '00880')) $mobile = substr($mobile, 2);
+                                if (str_starts_with($mobile, '8801') && strlen($mobile) >= 13) $mobile = '0'.substr($mobile, 3);
+                                return '<span class="text-muted"><i class="bi bi-telephone text-success"></i> '.e($mobile ?: $row->mobile).'</span> ';
+                            })()
                             : '').
 
                         (! empty($row->contact_email)

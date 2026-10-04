@@ -6,7 +6,7 @@
 .broadband-customer-table th{white-space:nowrap;font-size:.78rem;text-transform:uppercase;letter-spacing:.03em}
 .broadband-customer-table td{vertical-align:middle}
 .customer-actions{min-width:145px}.customer-actions form{display:inline}
-.customer-actions .btn{margin:.12rem}
+.customer-actions .btn{margin:.12rem}.customer-diagnostics{display:inline-flex;align-items:center;gap:.15rem;flex-wrap:wrap}.customer-diagnostic-result{font-size:.75rem;min-height:1.1rem}.traffic-metric{border:1px solid var(--bs-border-color);border-radius:.6rem;padding:.8rem 1rem}.traffic-metric small{display:block;color:var(--bs-secondary-color)}.traffic-metric strong{font-size:1.25rem}.traffic-live-dot{display:inline-block;width:.5rem;height:.5rem;border-radius:50%;background:currentColor;box-shadow:0 0 0 .25rem color-mix(in srgb,currentColor 12%,transparent)}
 .customer-meta{font-size:.78rem}.filter-card .form-label{font-size:.78rem;font-weight:600;color:#6c757d}
 </style>
 @endpush
@@ -118,22 +118,35 @@
                         </td>
                         <td><span class="badge text-bg-{{ $statusClass }}">{{ ucfirst($status) }}</span></td>
                         <td class="customer-actions">
-                            <a class="btn btn-outline-secondary btn-sm" title="View" href="{{ route('customers.show', $customerId) }}"><i class="bi bi-eye"></i></a>
-                            @if(auth()->user()->hasRole('Super Admin') || hasAccess(['Super Admin'], ['edit-customer']))
-                                <a class="btn btn-primary btn-sm" title="Edit" href="{{ route('customers.edit', $customerId) }}"><i class="bi bi-pencil-square"></i></a>
-                            @endif
-                            @if($status === 'active' && (auth()->user()->hasRole('Super Admin') || hasAccess(['Super Admin'], ['disable-customer'])))
-                                <form method="POST" action="{{ route('broadband-customer-disable', $customerId) }}" onsubmit="return confirm('Disable this customer?')">
-                                    @csrf
-                                    <button class="btn btn-warning btn-sm" title="Disable"><i class="bi bi-pause-circle"></i></button>
-                                </form>
-                            @endif
-                            @if($status !== 'active' && (auth()->user()->hasRole('Super Admin') || hasAccess(['Super Admin'], ['delete-customer'])))
-                                <form method="POST" action="{{ route('broadband-customer-destroy', $customerId) }}" onsubmit="return confirm('Delete this customer record? This cannot be undone.')">
-                                    @csrf
-                                    @method('DELETE')
-                                    <button class="btn btn-danger btn-sm" title="Delete"><i class="bi bi-trash"></i></button>
-                                </form>
+                            <div class="customer-diagnostics">
+                                <a class="btn btn-outline-secondary btn-sm" title="View" href="{{ route('customers.show', $customerId) }}"><i class="bi bi-eye"></i></a>
+                                @if(auth()->user()->hasRole('Super Admin') || hasAccess(['Super Admin'], ['edit-customer']))
+                                    <a class="btn btn-primary btn-sm" title="Edit" href="{{ route('customers.edit', $customerId) }}"><i class="bi bi-pencil-square"></i></a>
+                                @endif
+                                @if($mode === 'online')
+                                    <button type="button" class="btn btn-outline-info btn-sm js-customer-ping" title="Ping Check" data-url="{{ route('broadband-customer-ping', $customerId) }}">
+                                        <i class="bi bi-broadcast-pin"></i>
+                                    </button>
+                                    <button type="button" class="btn btn-outline-success btn-sm js-customer-traffic" title="Real-Time Traffic" data-url="{{ route('broadband-customer-traffic', $customerId) }}" data-customer="{{ $c->customer_unique_id }}" data-username="{{ $c->pppUser->username ?? '—' }}">
+                                        <i class="bi bi-activity"></i>
+                                    </button>
+                                @endif
+                                @if($status === 'active' && (auth()->user()->hasRole('Super Admin') || hasAccess(['Super Admin'], ['disable-customer'])))
+                                    <form method="POST" action="{{ route('broadband-customer-disable', $customerId) }}" onsubmit="return confirm('Disable this customer?')">
+                                        @csrf
+                                        <button class="btn btn-warning btn-sm" title="Disable"><i class="bi bi-pause-circle"></i></button>
+                                    </form>
+                                @endif
+                                @if($status !== 'active' && (auth()->user()->hasRole('Super Admin') || hasAccess(['Super Admin'], ['delete-customer'])))
+                                    <form method="POST" action="{{ route('broadband-customer-destroy', $customerId) }}" onsubmit="return confirm('Delete this customer record? This cannot be undone.')">
+                                        @csrf
+                                        @method('DELETE')
+                                        <button class="btn btn-danger btn-sm" title="Delete"><i class="bi bi-trash"></i></button>
+                                    </form>
+                                @endif
+                            </div>
+                            @if($mode === 'online')
+                                <div class="customer-diagnostic-result text-muted js-ping-result" aria-live="polite"></div>
                             @endif
                         </td>
                     </tr>
@@ -148,5 +161,147 @@
             {{ $customers->links() }}
         </div>
     </div>
+@if($mode === 'online')
+<div class="modal fade" id="customerTrafficModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content shadow">
+            <div class="modal-header">
+                <div>
+                    <div class="text-uppercase small text-muted fw-semibold">Broadband</div>
+                    <h5 class="modal-title mb-0"><span id="trafficCustomer">Customer</span> · Live Traffic</h5>
+                </div>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+                <div class="d-flex justify-content-between align-items-center mb-3">
+                    <div class="small text-muted">PPPoE: <strong id="trafficUsername">—</strong></div>
+                    <div class="small text-muted">Router: <strong id="trafficRouter">—</strong></div>
+                </div>
+                <div id="trafficError" class="alert alert-warning py-2 d-none"></div>
+                <div class="row g-2">
+                    <div class="col-6"><div class="traffic-metric text-success"><small>Download / RX</small><strong id="trafficRx">0 bps</strong></div></div>
+                    <div class="col-6"><div class="traffic-metric text-primary"><small>Upload / TX</small><strong id="trafficTx">0 bps</strong></div></div>
+                </div>
+                <div class="d-flex justify-content-between align-items-center mt-3 small text-muted">
+                    <span><span class="traffic-live-dot text-success"></span> Live</span>
+                    <span id="trafficUpdated">Waiting for data…</span>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+@push('scripts')
+<script>
+(() => {
+    const trafficModal = document.getElementById('customerTrafficModal');
+    const rxEl = document.getElementById('trafficRx');
+    const txEl = document.getElementById('trafficTx');
+    const updatedEl = document.getElementById('trafficUpdated');
+    const errorEl = document.getElementById('trafficError');
+    const customerEl = document.getElementById('trafficCustomer');
+    const usernameEl = document.getElementById('trafficUsername');
+    const routerEl = document.getElementById('trafficRouter');
+
+    const formatBits = (bits) => {
+        const value = Number(bits || 0);
+        if (value >= 1000000000) return (value / 1000000000).toFixed(2) + ' Gbps';
+        if (value >= 1000000) return (value / 1000000).toFixed(2) + ' Mbps';
+        if (value >= 1000) return (value / 1000).toFixed(2) + ' Kbps';
+        return Math.round(value) + ' bps';
+    };
+
+    let trafficUrl = '';
+    let trafficTimer = null;
+    let trafficInFlight = false;
+
+    const stopTraffic = () => {
+        if (trafficTimer) {
+            clearInterval(trafficTimer);
+            trafficTimer = null;
+        }
+        trafficInFlight = false;
+    };
+
+    const pollTraffic = async () => {
+        if (!trafficUrl || trafficInFlight) return;
+        trafficInFlight = true;
+        try {
+            const response = await fetch(trafficUrl, {
+                headers: { Accept: 'application/json', 'X-Requested-With': 'XMLHttpRequest' },
+                cache: 'no-store'
+            });
+            const data = await response.json();
+            if (!response.ok || !data.ok) throw new Error(data.message || 'Live traffic is unavailable.');
+            rxEl.textContent = formatBits(data.rx_bps);
+            txEl.textContent = formatBits(data.tx_bps);
+            routerEl.textContent = data.router || '—';
+            updatedEl.textContent = 'Updated ' + new Date().toLocaleTimeString();
+            errorEl.classList.add('d-none');
+            errorEl.textContent = '';
+        } catch (error) {
+            errorEl.textContent = error.message || 'Live traffic is unavailable.';
+            errorEl.classList.remove('d-none');
+        } finally {
+            trafficInFlight = false;
+        }
+    };
+
+    document.querySelectorAll('.js-customer-ping').forEach((button) => {
+        button.addEventListener('click', async () => {
+            const result = button.closest('td').querySelector('.js-ping-result');
+            const original = button.innerHTML;
+            button.disabled = true;
+            button.innerHTML = '<span class="spinner-border spinner-border-sm" aria-hidden="true"></span>';
+            try {
+                const response = await fetch(button.dataset.url, {
+                    headers: { Accept: 'application/json', 'X-Requested-With': 'XMLHttpRequest' },
+                    cache: 'no-store'
+                });
+                const data = await response.json();
+                if (data.ok) {
+                    result.className = 'customer-diagnostic-result text-success js-ping-result';
+                    result.textContent = 'Ping: ' + Number(data.latency_ms || 0).toFixed(2) + ' ms';
+                    result.title = data.ip || '';
+                } else {
+                    result.className = 'customer-diagnostic-result text-danger js-ping-result';
+                    result.textContent = data.message || 'Ping failed';
+                }
+            } catch (error) {
+                result.className = 'customer-diagnostic-result text-danger js-ping-result';
+                result.textContent = error.message || 'Ping check failed';
+            } finally {
+                button.disabled = false;
+                button.innerHTML = original;
+            }
+        });
+    });
+
+    document.querySelectorAll('.js-customer-traffic').forEach((button) => {
+        button.addEventListener('click', () => {
+            trafficUrl = button.dataset.url || '';
+            customerEl.textContent = button.dataset.customer || 'Customer';
+            usernameEl.textContent = button.dataset.username || '—';
+            routerEl.textContent = 'Loading…';
+            rxEl.textContent = '0 bps';
+            txEl.textContent = '0 bps';
+            updatedEl.textContent = 'Waiting for data…';
+            errorEl.classList.add('d-none');
+
+            if (window.bootstrap && trafficModal) {
+                window.bootstrap.Modal.getOrCreateInstance(trafficModal).show();
+            }
+
+            stopTraffic();
+            pollTraffic();
+            trafficTimer = setInterval(pollTraffic, 2000);
+        });
+    });
+
+    if (trafficModal) trafficModal.addEventListener('hidden.bs.modal', stopTraffic);
+})();
+</script>
+@endpush
+@endif
 </div>
 </x-app-layout>

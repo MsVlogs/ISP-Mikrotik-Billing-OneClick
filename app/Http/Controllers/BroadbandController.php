@@ -89,7 +89,7 @@ class BroadbandController extends Controller
         try {
             $uniqueId = decrypt($id);
             $customer = CustomersInfo::where('customer_unique_id', $uniqueId)->with('pppUser')->firstOrFail();
-            $ip = $customer->pppUser?->ppp_remote_ip;
+            $ip = $customer->pppUser?->ppp_remote_ip ?: $customer->pppUser?->ip_address;
 
             if (! $ip || ! filter_var($ip, FILTER_VALIDATE_IP)) {
                 return response()->json([

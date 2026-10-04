@@ -10,6 +10,7 @@ use App\Models\Reseller;
 use App\Models\RouterList;
 use Carbon\Carbon;
 use Illuminate\Http\Request;
+use Illuminate\Http\JsonResponse;
 
 class BroadbandController extends Controller
 {
@@ -80,6 +81,131 @@ class BroadbandController extends Controller
     { $request->merge(['from' => Carbon::now()->toDateString()]); return $this->list($request); }
     public function unverified(Request $request)
     { $request->merge(['status' => 'unverified']); return $this->list($request); }
+
+    public function customerPing(string $id): JsonResponse
+    {
+        abort_unless(auth()->user()?->hasRole('Super Admin') || hasAccess(['Super Admin'], ['mikrotik-setup']), 403);
+
+        try {
+            $uniqueId = decrypt($id);
+            $customer = CustomersInfo::where('customer_unique_id', $uniqueId)->with('pppUser')->firstOrFail();
+            $ip = $customer->pppUser?->ppp_remote_ip;
+
+            if (! $ip || ! filter_var($ip, FILTER_VALIDATE_IP)) {
+                return response()->json([
+                    'ok' => false,
+                    'message' => 'No valid customer IP is available for ping.',
+                    'ip' => $ip,
+                ], 422);
+            }
+
+            $isIpv6 = filter_var($ip, FILTER_VALIDATE_IP, FILTER_FLAG_IPV6) !== false;
+            $binary = $isIpv6 ? 'ping6' : 'ping';
+            $command = $binary.' -c 1 -W 2 '.escapeshellarg($ip);
+            $startedAt = microtime(true);
+
+            $descriptorSpec = [
+                0 => ['pipe', 'r'],
+                1 => ['pipe', 'w'],
+                2 => ['pipe', 'w'],
+            ];
+            $process = proc_open($command, $descriptorSpec, $pipes);
+
+            if (! is_resource($process)) {
+                return response()->json([
+                    'ok' => false,
+                    'message' => 'Ping service could not be started.',
+                    'ip' => $ip,
+                ], 503);
+            }
+
+            fclose($pipes[0]);
+            $stdout = stream_get_contents($pipes[1]);
+            $stderr = stream_get_contents($pipes[2]);
+            fclose($pipes[1]);
+            fclose($pipes[2]);
+
+            $exitCode = proc_close($process);
+            $latency = null;
+
+            if (preg_match('/time[=<]([0-9.]+)\s*ms/i', (string) $stdout, $match)) {
+                $latency = round((float) $match[1], 2);
+            }
+
+            if ($exitCode === 0) {
+                return response()->json([
+                    'ok' => true,
+                    'message' => 'Host is reachable.',
+                    'ip' => $ip,
+                    'latency_ms' => $latency ?? round((microtime(true) - $startedAt) * 1000, 2),
+                ]);
+            }
+
+            return response()->json([
+                'ok' => false,
+                'message' => 'Host did not reply to ping.',
+                'ip' => $ip,
+                'latency_ms' => $latency,
+                'detail' => trim((string) $stderr),
+            ]);
+        } catch (\Throwable $e) {
+            report($e);
+
+            return response()->json([
+                'ok' => false,
+                'message' => 'Ping check failed.',
+            ], 500);
+        }
+    }
+
+    public function customerTraffic(string $id): JsonResponse
+    {
+        abort_unless(auth()->user()?->hasRole('Super Admin') || hasAccess(['Super Admin'], ['mikrotik-setup']), 403);
+
+        try {
+            $uniqueId = decrypt($id);
+            $customer = CustomersInfo::where('customer_unique_id', $uniqueId)
+                ->with('pppUser')
+                ->firstOrFail();
+
+            $ppp = $customer->pppUser;
+
+            if (! $ppp || ! $ppp->router_name || ! $ppp->username) {
+                return response()->json([
+                    'ok' => false,
+                    'message' => 'No active MikroTik PPP session information is available.',
+                ], 422);
+            }
+
+            if ($customer->status !== 'active' || $ppp->status !== 'active') {
+                return response()->json([
+                    'ok' => false,
+                    'message' => 'Customer is no longer online.',
+                ], 409);
+            }
+
+            $interface = '<pppoe-'.$ppp->username.'>';
+            $data = app(MikrotikController::class)->getLiveTraffic($ppp->router_name, $interface);
+
+            return response()->json([
+                'ok' => true,
+                'customer' => $customer->customer_unique_id,
+                'username' => $ppp->username,
+                'router' => $ppp->router_name,
+                'interface' => $interface,
+                'rx_bps' => (int) ($data['rx-bits-per-second'] ?? 0),
+                'tx_bps' => (int) ($data['tx-bits-per-second'] ?? 0),
+                'timestamp' => now()->toIso8601String(),
+            ]);
+        } catch (\Throwable $e) {
+            report($e);
+
+            return response()->json([
+                'ok' => false,
+                'message' => 'Live traffic check failed.',
+            ], 500);
+        }
+    }
 
     public function disableCustomer(string $id)
     {

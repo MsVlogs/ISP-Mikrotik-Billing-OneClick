@@ -120,7 +120,7 @@
                         <td class="customer-actions">
                             <div class="customer-diagnostics">
                                 <a class="btn btn-outline-secondary btn-sm" title="View" href="{{ route('customers.show', $customerId) }}"><i class="bi bi-eye"></i></a>
-                                @if(auth()->user()->hasRole('Super Admin') || hasAccess(['Super Admin'], ['edit-customer']))
+                                @if($mode !== 'online' && (auth()->user()->hasRole('Super Admin') || hasAccess(['Super Admin'], ['edit-customer'])))
                                     <a class="btn btn-primary btn-sm" title="Edit" href="{{ route('customers.edit', $customerId) }}"><i class="bi bi-pencil-square"></i></a>
                                 @endif
                                 @if($mode === 'online')
